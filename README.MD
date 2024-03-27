@@ -1,4 +1,4 @@
-# Interactive subprocess Instances for cmd.exe, powershell.exe, adb.exe, bash.exe without deadlocks - pure Python, no dependencies
+# Interactive subprocess Instances for cmd.exe, powershell.exe, adb.exe, bash.exe without deadlocks
 
 ## Easy, bidirectional communication with various subprocesses such as PowerShell, ADB, Command Prompt (Cmd), and Bash.
 
