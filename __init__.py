@@ -4,54 +4,15 @@ import threading
 import ctypes
 import re
 from ctypes import wintypes
-import traceback
 from time import sleep
 import os
 from math import floor
+from exceptdrucker import errwrite, config
+from procciao import kill_proc
 
-BOLD = "\033[1m"
-ITALIC = "\033[3m"
-UNDERLINE = "\033[4m"
-UNDERLINE_THICK = "\033[21m"
-HIGHLIGHTED = "\033[7m"
-HIGHLIGHTED_BLACK = "\033[40m"
-HIGHLIGHTED_RED = "\033[41m"
-HIGHLIGHTED_GREEN = "\033[42m"
-HIGHLIGHTED_YELLOW = "\033[43m"
-HIGHLIGHTED_BLUE = "\033[44m"
-HIGHLIGHTED_PURPLE = "\033[45m"
-HIGHLIGHTED_CYAN = "\033[46m"
-HIGHLIGHTED_GREY = "\033[47m"
-HIGHLIGHTED_GREY_LIGHT = "\033[100m"
-HIGHLIGHTED_RED_LIGHT = "\033[101m"
-HIGHLIGHTED_GREEN_LIGHT = "\033[102m"
-HIGHLIGHTED_YELLOW_LIGHT = "\033[103m"
-HIGHLIGHTED_BLUE_LIGHT = "\033[104m"
-HIGHLIGHTED_PURPLE_LIGHT = "\033[105m"
-HIGHLIGHTED_CYAN_LIGHT = "\033[106m"
-HIGHLIGHTED_WHITE_LIGHT = "\033[107m"
-STRIKE_THROUGH = "\033[9m"
-MARGIN_1 = "\033[51m"
-MARGIN_2 = "\033[52m"
-BLACK = "\033[30m"
-RED_DARK = "\033[31m"
-GREEN_DARK = "\033[32m"
-YELLOW_DARK = "\033[33m"
-BLUE_DARK = "\033[34m"
-PURPLE_DARK = "\033[35m"
-CYAN_DARK = "\033[36m"
-GREY_DARK = "\033[37m"
-BLACK_LIGHT = "\033[90m"
 RED = "\033[91m"
-GREEN = "\033[92m"
-YELLOW = "\033[93m"
-BLUE = "\033[94m"
-PURPLE = "\033[95m"
-CYAN = "\033[96m"
-WHITE = "\033[97m"  # noqa
 DEFAULT = "\033[0m"
-debug_is_enabled = True
-
+config.debug = True
 
 def sleep2(secs):
     r"""
@@ -90,34 +51,6 @@ def sleep2(secs):
             sleep(0.016)
 
 
-def printincolor(values, color=None):
-    if color:
-        print("%s%s%s" % (color, values, DEFAULT))
-
-    else:
-        print("%s%s" % (values, DEFAULT))
-
-
-def errwrite(s=None):
-    """
-    Writes an error message to the standard error stream if debug mode is enabled.
-
-    Parameters:
-        s (str, optional): The error message to be written. Defaults to None.
-
-    Returns:
-        None
-    """
-    if not debug_is_enabled:
-        return
-    printincolor("------------------------------------------", RED)
-    try:
-        etype, value, tb = sys.exc_info()
-        traceback.print_exception(etype, value, tb, file=sys.stderr)
-    except Exception:
-        sys.stderr.write(f"{s}\n")
-    sys.stderr.flush()
-    printincolor("------------------------------------------", RED)
 
 
 startupinfo = subprocess.STARTUPINFO()
@@ -151,7 +84,7 @@ _GetShortPathNameW.restype = wintypes.DWORD
 
 
 def send_ctrl_commands(
-    pid, command=0, protect_myself=True, powershell_or_python="powershell"
+    pid, protect_myself=True,*args,**kwargs
 ):
     """
     A function to send control commands to a specified process.
@@ -162,39 +95,21 @@ def send_ctrl_commands(
         protect_myself (bool, optional): Flag to protect the own process of accidentally KeyboardInterrupts. Defaults to True.
         powershell_or_python (str, optional): The choice of using powershell or python. Defaults to "powershell".
     """
-    try:
-        if sys.executable.lower().endswith("python.exe"):
-            commandstring = r"""import ctypes, sys; CTRL_C_EVENT, CTRL_BREAK_EVENT, CTRL_CLOSE_EVENT, CTRL_LOGOFF_EVENT, CTRL_SHUTDOWN_EVENT = 0, 1, 2, 3, 4; kernel32 = ctypes.WinDLL("kernel32", use_last_error=True); (lambda pid, cmdtosend=CTRL_C_EVENT: [kernel32.FreeConsole(), kernel32.AttachConsole(pid), kernel32.SetConsoleCtrlHandler(None, 1), kernel32.GenerateConsoleCtrlEvent(cmdtosend, 0), sys.exit(0) if isinstance(pid, int) else None])(int(sys.argv[1]), int(sys.argv[2]) if len(sys.argv) > 2 else None) if __name__ == '__main__' else None"""
-            subprocess.Popen(
-                [sys.executable, "-c", commandstring, str(pid), str(command)],
-                **invisibledict,
-            )  # Send Ctrl-C
-            sleep(0.1)
-        else:
-            cmd = rb'''$ProcessID = PPPPP
-                $encodedCommand = [Convert]::ToBase64String([System.Text.Encoding]::Unicode.GetBytes("Add-Type -Names 'w' -Name 'k' -M '[DllImport(""kernel32.dll"")]public static extern bool FreeConsole();[DllImport(""kernel32.dll"")]public static extern bool AttachConsole(uint p);[DllImport(""kernel32.dll"")]public static extern bool SetConsoleCtrlHandler(uint h, bool a);[DllImport(""kernel32.dll"")]public static extern bool GenerateConsoleCtrlEvent(uint e, uint p);public static void SendCtrlC(uint p){FreeConsole();AttachConsole(p);GenerateConsoleCtrlEvent(0, 0);}';[w.k]::SendCtrlC($ProcessID)"))
-                start-process powershell.exe -argument "-nologo -noprofile -executionpolicy bypass -EncodedCommand $encodedCommand"'''.replace(
-                b"PPPPP", str(int(pid)).encode()
-            )
-
-            p = subprocess.Popen(
-                ["powershell"],
-                stdin=subprocess.PIPE,
-                shell=False,
-                **invisibledict,
-            )
-            p.stdin.write(cmd + b"\n")
-            p.stdin.flush()
-            outs, errs = p.communicate()
-
-    except KeyboardInterrupt:
-        if not protect_myself:
-            raise KeyboardInterrupt
-        else:
-            try:
-                sleep(1)
-            except:
-                pass
+    kill_proc(
+    pid=pid,
+    kill_timeout=5,    protect_myself=protect_myself,  # important, protect_myselfis False, you might kill the whole python process you are in.
+    winkill_sigint_dll=True,  # dll first
+    winkill_sigbreak_dll=True,
+    winkill_sigint=True,  # exe from outside
+    winkill_sigbreak=True,
+    powershell_sigint=True,
+    powershell_sigbreak=True,
+    powershell_close=True,
+    multi_children_kill=True,  # try to kill each child one by one
+    multi_children_always_ignore_pids=(0, 4),  # ignore system processes
+    print_output=False,
+    taskkill_as_last_option=True,  # this always works, but it is not gracefully anymore
+)
 
 
 def killthread(threadobject):
@@ -412,7 +327,7 @@ class SubProcessInteractive:
         except Exception as e:
             errwrite(e)
 
-    def _restart_everything(self, close3=True):
+    def _restart_everything(self, **kwargs):
         """
         Restarts the entire process by terminating the current process and starting a new one.
 
@@ -422,6 +337,7 @@ class SubProcessInteractive:
         Returns:
             None
         """
+        close3=kwargs.pop("close3", True)
         self.is_rebooting = True
 
         try:

@@ -2,6 +2,10 @@
 
 ## Easy, bidirectional communication with various subprocesses such as PowerShell, ADB, Command Prompt (Cmd), and Bash.
 
+### pip install interactiveshellsubproc
+
+### Tested against MSYS2 / powershell/cmd.dexe -> Windows 10 / Bluestacks / Python 3.11 / Windows 10
+
 ## Advantages
 
 ### Interactivity:
